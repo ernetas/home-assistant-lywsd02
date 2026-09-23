@@ -21,19 +21,18 @@ _LOGGER = logging.getLogger(__name__)
 _UUID_TIME = 'EBE0CCB7-7A0A-4B0C-8A1A-6FF2997DA3A6'
 _UUID_TEMO = 'EBE0CCBE-7A0A-4B0C-8A1A-6FF2997DA3A6'
 
-def get_localized_timestamp():
-    """Return the current time as a 'fake UTC' epoch.
+def get_localized_timestamp(tz_offset=0):
+    """Return the epoch that makes the device display local time.
 
-    The device reads the timestamp it receives as local wall-clock time, so
-    the UTC offset has to be baked in. The previous implementation computed
-    (utc - local).seconds, but .seconds on a negative timedelta normalises to
-    days=-1: at UTC+2 it yielded 79200 instead of -7200, shifting the value by
-    -22h rather than +2h. The time of day came out right by coincidence, the
-    date was one day behind.
+    The device shows `timestamp + tz_offset hours` as wall-clock time, so the
+    local UTC offset is baked into the timestamp minus whatever part of it
+    `tz_offset` already contributes. Baking the full offset in regardless of
+    `tz_offset` double-counts it (see #13): at UTC+3 with tz_offset=3 the
+    clock ran 3 hours fast.
     """
     now = int(time.time())
     offset = datetime.now().astimezone().utcoffset()
-    return now + int(offset.total_seconds())
+    return now + int(offset.total_seconds()) - tz_offset * 3600
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """
@@ -91,9 +90,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             timeout=tout,
         )
         try:
-            timestamp = int(
-                call.data.get('timestamp') or get_localized_timestamp()
-            )
+            timestamp = call.data.get('timestamp')
+            if timestamp is None:
+                timestamp = get_localized_timestamp(tz_offset)
+            timestamp = int(timestamp)
 
             data = struct.pack('Ib', timestamp, tz_offset)
             await client.write_gatt_char(_UUID_TIME, data)
