@@ -4,14 +4,13 @@ import time
 import struct
 import logging
 
-from datetime import datetime
-
 from bleak.exc import BleakError
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.components import bluetooth
+from homeassistant.util import dt as dt_util
 
 DOMAIN = "lywsd02"
 
@@ -29,9 +28,12 @@ def get_localized_timestamp(tz_offset=0):
     `tz_offset` already contributes. Baking the full offset in regardless of
     `tz_offset` double-counts it (see #13): at UTC+3 with tz_offset=3 the
     clock ran 3 hours fast.
+
+    Uses Home Assistant's configured time zone (dt_util), not the host OS
+    one - containerized installs typically keep the OS on UTC.
     """
     now = int(time.time())
-    offset = datetime.now().astimezone().utcoffset()
+    offset = dt_util.now().utcoffset()
     return now + int(offset.total_seconds()) - tz_offset * 3600
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
